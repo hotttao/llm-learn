@@ -1,0 +1,153 @@
+# =============================================================================
+# OntoOps 能力本体（L2：转移词汇表 / 动词层）
+# -----------------------------------------------------------------------------
+# 每个动作四件套（军规 2/5/7）：
+#   params          参数 schema（entity_ref 类型会先做存在性解析）
+#   preconditions   声明式前置条件——语义合法性（"此刻做这件事有没有意义"）
+#   effects         声明式效果——应用后由 validator 复验世界一致性（军规 8）
+#   risk / effect_class  治理输入（由 policies.yaml 消费，语义与许可分层）
+#
+# 前置条件 DSL：
+#   - exists: {of: 类型, where: {字段: 值|{contains: 值}}}    存在满足条件的实体
+#   - none:   {of: 类型, where: {...}}                        不存在满足条件的实体
+#   - field:  {entity: "$参数", field: 字段, neq|eq: 值}      参数实体的字段断言
+#   where 里的 "$名字" 引用本次调用的参数值
+#
+# 效果 DSL：
+#   - set:    {entity: "$参数", field: 字段, value: 字面量|"$参数"}
+#   - create: {of: 类型, with: {字段: 字面量|"$参数"|{auto_id: 类型}}}
+#   - retract:{of: 类型, where: {...}}
+# =============================================================================
+ontology: ontoops-capabilities
+version: "1.2.0"
+description: Agent 可执行的动作目录：查询、故障单管理、回滚、重启、扩缩容
+
+actions:
+  list_services:
+    description: 列出系统中所有服务及其当前状态、tier、副本数。排障通常从这里开始。
+    effect_class: read
+    risk: none
+    params: {}
+    preconditions: []
+    effects: []
+
+  get_service:
+    description: 查询单个服务的详细信息（tier、副本数、状态、负责团队）。
+    effect_class: read
+    risk: none
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+    preconditions: []
+    effects: []
+
+  get_dependencies:
+    description: 查询与某服务相关的依赖关系（谁依赖它、它依赖谁），用于定位故障传播路径。
+    effect_class: read
+    risk: none
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+    preconditions: []
+    effects: []
+
+  get_recent_deployments:
+    description: 查询某服务最近的部署记录，用于排查"最近变更导致故障"的经典场景。
+    effect_class: read
+    risk: none
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+    preconditions: []
+    effects: []
+
+  list_incidents:
+    description: 列出所有故障单及其状态、severity、受影响服务。用于确认单号与处置进度。
+    effect_class: read
+    risk: none
+    params: {}
+    preconditions: []
+    effects: []
+
+  create_incident:
+    description: 为某服务创建故障单（Incident）。重启等修复动作要求先存在覆盖该服务的
+      open 状态故障单——这是把"变更必须有单可溯"写进本体而非写进 prompt。
+    effect_class: mutate
+    risk: low
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+      severity: {type: enum, values: [sev1, sev2, sev3], required: true}
+      summary: {type: string, required: true}
+    preconditions:
+      - none: {of: Incident, where: {status: open, affected_services: {contains: "$service"}}}
+    effects:
+      - create:
+          of: Incident
+          with:
+            id: {auto_id: Incident}
+            status: open
+            severity: "$severity"
+            summary: "$summary"
+            affected_services: ["$service"]
+
+  resolve_incident:
+    description: 关闭故障单。受影响服务必须已全部恢复 healthy——即使前置条件漏了这条，
+      领域约束 resolved-incident-services-healthy 也会在效果复验时兜底拦截并回滚。
+    effect_class: mutate
+    risk: low
+    params:
+      incident: {type: entity_ref, of: Incident, required: true}
+    preconditions:
+      - exists: {of: Incident, where: {id: "$incident", status_in: [open, mitigated]}}
+    effects:
+      - set: {entity: "$incident", field: status, value: resolved}
+
+  rollback_deployment:
+    description: 回滚一次部署，使其状态变为 rolled_back。高风险：改变服务运行的代码版本。
+      回滚后通常仍需重启服务才能恢复。
+    effect_class: mutate
+    risk: high
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+      deployment: {type: entity_ref, of: Deployment, required: true}
+    preconditions:
+      - exists: {of: Deployment, where: {id: "$deployment", service: "$service"}}
+      - field: {entity: "$deployment", field: status, neq: rolled_back}
+    effects:
+      - set: {entity: "$deployment", field: status, value: rolled_back}
+      - create:
+          of: ActionRecord
+          with:
+            id: {auto_id: ActionRecord}
+            action: rollback_deployment
+            service: "$service"
+            note: "回滚部署 $deployment"
+
+  restart_service:
+    description: 重启服务实例，期望其恢复 healthy 并清除关联告警。前置条件：存在覆盖该服务的
+      open 状态故障单（先建单后操作）。critical 服务另需人工审批（见 policies.yaml）。
+    effect_class: mutate
+    risk: high
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+    preconditions:
+      - exists: {of: Incident, where: {status: open, affected_services: {contains: "$service"}}}
+    effects:
+      - set: {entity: "$service", field: status, value: healthy}
+      - retract: {of: Alert, where: {service: "$service"}}
+      - create:
+          of: ActionRecord
+          with:
+            id: {auto_id: ActionRecord}
+            action: restart_service
+            service: "$service"
+            note: "重启完成，期望恢复 healthy"
+
+  scale_service:
+    description: 调整服务副本数。critical 服务缩容到 2 以下会被领域约束
+      critical-min-replicas 在效果复验时拒绝并自动回滚。
+    effect_class: mutate
+    risk: medium
+    params:
+      service: {type: entity_ref, of: Service, required: true}
+      replicas: {type: integer, min: 1, max: 20, required: true}
+    preconditions: []
+    effects:
+      - set: {entity: "$service", field: replicas, value: "$replicas"}

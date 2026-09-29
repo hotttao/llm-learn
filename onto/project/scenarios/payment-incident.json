@@ -1,0 +1,46 @@
+{
+  "name": "支付服务超时排障",
+  "goal": "用户反馈支付链路超时，支付服务出现 critical 告警。请排查根因并恢复服务，规范走完故障单流程（先建单后操作）后结束，并给出处置报告。",
+  "entities": [
+    {"type": "Service", "name": "payment-api", "tier": "critical", "owner_team": "payments", "replicas": 4, "status": "degraded"},
+    {"type": "Service", "name": "payment-db", "tier": "critical", "owner_team": "payments", "replicas": 3, "status": "down"},
+    {"type": "Service", "name": "checkout-api", "tier": "critical", "owner_team": "trade", "replicas": 4, "status": "healthy"},
+    {"type": "Service", "name": "auth-api", "tier": "standard", "owner_team": "platform", "replicas": 2, "status": "healthy"},
+    {"type": "Service", "name": "notify-svc", "tier": "standard", "owner_team": "platform", "replicas": 2, "status": "healthy"},
+
+    {"type": "Dependency", "from": "payment-api", "to": "payment-db", "kind": "data"},
+    {"type": "Dependency", "from": "payment-api", "to": "auth-api", "kind": "sync"},
+    {"type": "Dependency", "from": "checkout-api", "to": "payment-api", "kind": "sync"},
+    {"type": "Dependency", "from": "checkout-api", "to": "notify-svc", "kind": "async"},
+
+    {"type": "Alert", "id": "ALR-2001", "service": "payment-api", "severity": "critical", "message": "p99 延迟 1200ms 超阈值(300ms)"},
+    {"type": "Alert", "id": "ALR-2002", "service": "payment-db", "severity": "critical", "message": "实例探活连续失败 x3"},
+
+    {"type": "Deployment", "id": "DEP-1041", "service": "payment-db", "version": "2.3.9", "status": "active", "note": "例行升级"},
+    {"type": "Deployment", "id": "DEP-1042", "service": "payment-db", "version": "2.4.1", "status": "active", "note": "连接池参数重构(connection-pool refactor)"},
+    {"type": "Deployment", "id": "DEP-1030", "service": "auth-api", "version": "5.0.2", "status": "active", "note": "例行升级"}
+  ],
+  "script": [
+    {"thought": "payment-db 探活失败，大概率是根因，直接重启它", "action": "restart_service", "params": {"service": "payment-db"}},
+
+    {"thought": "被拦了——重前需要有故障单。先看全局状态", "action": "list_services", "params": {}},
+    {"thought": "payment-api 也 degraded，查它的依赖找故障传播路径", "action": "get_dependencies", "params": {"service": "payment-api"}},
+    {"thought": "依赖 payment-db(down, data)。查最近变更——经典排查顺序", "action": "get_recent_deployments", "params": {"service": "payment-db"}},
+
+    {"thought": "DEP-1042 连接池变更是重大嫌疑，先回滚", "action": "rollback_deployment", "params": {"service": "payment-db", "deployment": "DEP-1042"}},
+
+    {"thought": "回滚完成。按规范先建故障单再重启", "action": "create_incident", "params": {"service": "payment-db", "severity": "sev1", "summary": "payment-db 宕约：疑似 DEP-1042 连接池变更，已回滚待重启"}},
+
+    {"thought": "试着关单（预期会被约束拦下：服务还没恢复）", "action": "resolve_incident", "params": {"incident": "INC-1001"}},
+
+    {"thought": "果然被拦，现在重启的前置条件满足了", "action": "restart_service", "params": {"service": "payment-db"}},
+
+    {"thought": "payment-db 恢复。它之上的 payment-api 是级联故障，同样立单后处置", "action": "create_incident", "params": {"service": "payment-api", "severity": "sev2", "summary": "级联 degraded：依赖 payment-db 宕约所致"}},
+    {"thought": "重启 payment-api 清除自身告警", "action": "restart_service", "params": {"service": "payment-api"}},
+
+    {"thought": "确认所有受影响服务已恢复，逐个关单", "action": "resolve_incident", "params": {"incident": "INC-1001"}},
+    {"thought": "关闭第二张单", "action": "resolve_incident", "params": {"incident": "INC-1002"}},
+
+    {"thought": "全部恢复，收尾", "action": "finish", "report": "根因：DEP-1042 连接池参数变更导致 payment-db 宕机，payment-api 因数据依赖级联 degraded。处置：回滚 DEP-1042 → 建单 INC-1001/INC-1002 → 分别重启恢复 → 告警清除 → 双单关闭。全程两次被本体拦下纠偏（无单重启、未恢复关单）。"}
+  ]
+}

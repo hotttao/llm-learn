@@ -1,0 +1,30 @@
+# =============================================================================
+# OntoOps 策略本体（治理层：许可，而非语义合法性）
+# -----------------------------------------------------------------------------
+# 分层原则（军规 7）：
+#   capabilities.yaml 的 preconditions 回答「此刻做这件事有没有意义」（语义）
+#   本文件回答「即使有意义，允不允许做」（治理：风险 → 审批）
+# 两者分离，改审批流程不必动业务语义，反之亦然。
+#
+# when DSL：
+#   risk_in:        动作风险等级命中列表
+#   target_tier_in: 参数中任一 entity_ref 实体的 tier 命中列表
+# require:
+#   human_approval —— Mock/demo 模式自动批准但醒目记录；chat 模式暂停等待人工 y/n
+# =============================================================================
+policy: ontoops-governance
+version: "1.2.0"
+description: 风险驱动的审批策略
+
+rules:
+  - id: high-risk-needs-approval
+    when: {risk_in: [high]}
+    require: human_approval
+    message: "高风险动作 {action} 需要人工审批"
+
+  - id: medium-risk-on-critical-needs-approval
+    when: {risk_in: [medium], target_tier_in: [critical]}
+    require: human_approval
+    message: "对 critical 服务的 {action} 需要人工审批"
+
+demo_auto_approve: true

@@ -1,0 +1,97 @@
+# =============================================================================
+# OntoOps 领域本体（L1：状态词汇表 / TBox）
+# -----------------------------------------------------------------------------
+# 约定（军规 1「为人写，为机器验证」）：
+#   - 每个实体/属性都有 description：给 LLM 和人读
+#   - 类型、枚举、约束：给 validator.py 机器执行
+# 约束 DSL（SHACL-lite 三段式）：
+#   scope:  约束作用于哪类实体（≈ SHACL 的 target）
+#   where:  只检查满足这些字段条件的实体（≈ sh:targetClass + condition）
+#   require: 具体要求（≈ sh:property / sh:node）
+#     - {字段: {min|Max|min_items|eq}}      数值/枚举约束
+#     - refs_all: {field, of, check}        引用实体须全部满足 check
+#     - (配合 require_refs 见 dependency-ref-integrity)
+# =============================================================================
+ontology: ontoops-core
+version: "1.2.0"
+description: 运维排障领域的领域本体——服务、依赖、告警、故障单、部署
+
+entity_types:
+  Service:
+    description: 可独立部署的运行单元。tier=critical 表示其不可用会直接造成资损或 SLA 违约。
+    properties:
+      name: {type: string, required: true, description: 服务唯一名，如 payment-db}
+      tier: {type: enum, values: [critical, standard, experimental], required: true, description: 业务重要级别}
+      owner_team: {type: string, required: true, description: 负责团队}
+      replicas: {type: integer, min: 0, max: 50, description: 当前实例副本数}
+      status: {type: enum, values: [healthy, degraded, down], description: 健康状态}
+
+  Dependency:
+    description: 服务间的运行时依赖。from 依赖 to：to 故障时 from 会受影响。
+    properties:
+      from: {type: string, required: true, description: 依赖方服务名}
+      to: {type: string, required: true, description: 被依赖方服务名}
+      kind: {type: enum, values: [sync, async, data], required: true, description: 同步调用/异步消息/数据存储}
+
+  Alert:
+    description: 监控系统产生的告警，指向某个服务。
+    properties:
+      id: {type: string, required: true}
+      service: {type: string, required: true, description: 告警归属的服务名}
+      severity: {type: enum, values: [critical, warning, info], required: true}
+      message: {type: string, required: true}
+
+  Incident:
+    description: 故障单。写操作与重启类动作的语义前置条件；解决后受影响服务必须全部健康。
+    properties:
+      id: {type: string, required: true}
+      status: {type: enum, values: [open, mitigated, resolved], required: true}
+      severity: {type: enum, values: [sev1, sev2, sev3], required: true}
+      summary: {type: string, required: true}
+      affected_services: {type: string_list, description: 受影响服务名列表}
+
+  Deployment:
+    description: 一次部署记录。排障时用于回答"最近变更是什么"。
+    properties:
+      id: {type: string, required: true}
+      service: {type: string, required: true}
+      version: {type: string, required: true}
+      status: {type: enum, values: [active, rolled_back], required: true}
+      note: {type: string, description: 变更说明}
+
+  ActionRecord:
+    description: 已执行动作的台账（审计轨迹的实例层）。由 restart/scale 等动作的效果自动写入。
+    properties:
+      id: {type: string, required: true}
+      action: {type: string, required: true, description: 动作名}
+      service: {type: string, required: true}
+      note: {type: string, description: 备注信息}
+
+constraints:
+  - id: critical-min-replicas
+    scope: Service
+    where: {tier: critical}
+    require: {replicas: {min: 2}}
+    severity: error
+    message: "critical 服务 {name} 副本数不得低于 2（当前 {replicas}）"
+
+  - id: open-incident-needs-services
+    scope: Incident
+    where: {status: open}
+    require: {affected_services: {min_items: 1}}
+    severity: error
+    message: "open 状态的故障单 {id} 必须至少关联一个受影响服务"
+
+  - id: resolved-incident-services-healthy
+    scope: Incident
+    where: {status: resolved}
+    require:
+      refs_all: {field: affected_services, of: Service, check: {status: healthy}}
+    severity: error
+    message: "故障单 {id} 已 resolved，但其受影响服务中仍有非 healthy 状态者"
+
+  - id: dependency-ref-integrity
+    scope: Dependency
+    require_refs: {from: Service, to: Service}
+    severity: error
+    message: "Dependency {from}→{to} 的两端必须是已存在的 Service"
