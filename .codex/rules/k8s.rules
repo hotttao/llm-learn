@@ -1,0 +1,111 @@
+# Kubernetes 查询命令：只读，不修改集群资源。
+prefix_rule(
+    pattern = ["kubectl", "get"],
+    decision = "allow",
+    justification = "kubectl read-only resource query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "describe"],
+    decision = "allow",
+    justification = "kubectl read-only resource inspection"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "logs"],
+    decision = "allow",
+    justification = "kubectl read-only pod log inspection"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "events"],
+    decision = "allow",
+    justification = "kubectl read-only event inspection"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "top"],
+    decision = "allow",
+    justification = "kubectl read-only resource metrics query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "explain"],
+    decision = "allow",
+    justification = "kubectl read-only API documentation query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "api-resources"],
+    decision = "allow",
+    justification = "kubectl read-only API resource query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "api-versions"],
+    decision = "allow",
+    justification = "kubectl read-only API version query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "cluster-info"],
+    decision = "allow",
+    justification = "kubectl read-only cluster inspection"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "version"],
+    decision = "allow",
+    justification = "kubectl read-only version query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "auth", "can-i"],
+    decision = "allow",
+    justification = "kubectl read-only permission query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "rollout", "status"],
+    decision = "allow",
+    justification = "kubectl read-only rollout status query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "wait"],
+    decision = "allow",
+    justification = "kubectl resource readiness query"
+)
+
+prefix_rule(
+    pattern = ["kubectl", "diff"],
+    decision = "allow",
+    justification = "kubectl read-only manifest diff"
+)
+
+# 资源应用属于本项目的正常部署操作，允许直接执行。
+prefix_rule(
+    pattern = ["kubectl", "apply"],
+    decision = "allow",
+    justification = "apply Kubernetes manifests"
+)
+
+# 删除资源会改变集群状态，始终要求人工审核。
+prefix_rule(
+    pattern = ["kubectl", "delete"],
+    decision = "prompt",
+    justification = "deleting Kubernetes resources requires review"
+)
+
+# 放行 curl，用于调用当前实验中的 HTTP API 和健康检查接口。
+prefix_rule(
+    pattern = ["curl"],
+    decision = "allow",
+    justification = "HTTP API and health-check requests"
+)
+
+prefix_rule(
+    pattern = ["sed"],
+    decision = "allow",
+    justification = "sed"
+)

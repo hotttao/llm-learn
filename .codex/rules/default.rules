@@ -1,0 +1,34 @@
+# 放行 git，所有 git 子命令无需确认
+prefix_rule(
+    pattern = ["git"],
+    decision = "allow",
+    justification = "git source control commands"
+)
+
+# 放行 docker：docker ps / docker build / docker run 全部放行
+prefix_rule(
+    pattern = ["docker"],
+    decision = "allow",
+    justification = "docker container commands"
+)
+
+# 放行 ps 进程查看
+prefix_rule(
+    pattern = ["ps"],
+    decision = "allow",
+    justification = "list process"
+)
+
+# 放行 go：go test / go build / go run
+prefix_rule(
+    pattern = ["go"],
+    decision = "allow",
+    justification = "golang toolchain"
+)
+
+# --------------------------
+# 高危命令保持 prompt（弹出确认）
+prefix_rule(pattern = ["rm"], decision = "prompt")
+prefix_rule(pattern = ["sudo"], decision = "forbidden")
+prefix_rule(pattern = ["bash"], decision = "prompt")
+prefix_rule(pattern = ["sh"], decision = "prompt")

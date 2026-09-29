@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI Design"
+  short_description: "维护 UI 平台架构、交互契约、插槽与响应式设计规范"
+  default_prompt: "使用 $ui-design 对齐并维护当前 UI 平台设计，然后按设计完成实现与验证。"

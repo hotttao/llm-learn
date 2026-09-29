@@ -1,0 +1,95 @@
+prefix_rule(
+    pattern = ["python", "-B", "-m", "pytest"],
+    decision = "allow",
+    justification = "Allow pytest via python -B"
+)
+
+prefix_rule(
+    pattern = ["python", "-m", "pytest"],
+    decision = "allow",
+    justification = "Allow pytest via python"
+)
+
+prefix_rule(
+    pattern = ["python3", "-m", "pytest"],
+    decision = "allow",
+    justification = "Allow pytest via python3"
+)
+
+prefix_rule(
+    pattern = ["pytest"],
+    decision = "allow",
+    justification = "Allow direct pytest runs"
+)
+
+prefix_rule(
+    pattern = ["python", "-B", "-m", "ruff"],
+    decision = "allow",
+    justification = "Allow all Ruff commands via python -B"
+)
+
+prefix_rule(
+    pattern = ["python", "-B", "-m", "ruff", "check"],
+    decision = "allow",
+    justification = "Allow Ruff checks via python -B"
+)
+
+prefix_rule(
+    pattern = ["python", "-B", "-m", "ruff", "format"],
+    decision = "allow",
+    justification = "Allow Ruff formatting via python -B"
+)
+
+prefix_rule(
+    pattern = ["ruff", "check"],
+    decision = "allow",
+    justification = "Allow direct Ruff checks"
+)
+
+prefix_rule(
+    pattern = ["ruff", "format"],
+    decision = "allow",
+    justification = "Allow direct Ruff formatting"
+)
+
+prefix_rule(
+    pattern = ["python", "-B", "-m", "py_compile"],
+    decision = "allow",
+    justification = "Allow Python syntax compilation checks"
+)
+
+prefix_rule(
+    pattern = ["lint-imports", "--config"],
+    decision = "allow",
+    justification = "Allow import-linter architecture checks"
+)
+
+prefix_rule(
+    pattern = ["uv", "run", "pytest"],
+    decision = "allow",
+    justification = "Allow pytest through uv"
+)
+
+prefix_rule(
+    pattern = ["uv", "run", "ruff", "check"],
+    decision = "allow",
+    justification = "Allow Ruff checks through uv"
+)
+
+prefix_rule(
+    pattern = ["uv", "run", "ruff", "format"],
+    decision = "allow",
+    justification = "Allow Ruff formatting through uv"
+)
+
+prefix_rule(
+    pattern = ["black"],
+    decision = "allow",
+    justification = "Allow Black formatting"
+)
+
+prefix_rule(
+    pattern = ["isort"],
+    decision = "allow",
+    justification = "Allow isort formatting"
+)
